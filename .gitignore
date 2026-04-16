@@ -39,3 +39,13 @@
 
 # debug information files
 *.dwo
+
+# IDE files
+.idea/
+
+# Build directories
+build/
+cmake-build-debug/
+
+# Log files
+*.log
