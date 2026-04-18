@@ -41,48 +41,53 @@ pkg_check_modules(FFMPEG REQUIRED IMPORTED_TARGET
 option(ENABLE_TESTS "Enable tests" ON)
 option(ENABLE_DEBUG_LAYERS "Enable Vulkan debug layers in Debug mode" ON)
 
-# 收集所有源文件（排除tests目录和构建目录）
-file(GLOB_RECURSE ALL_SRC_FILES
-    "*.cpp"
-    "core/*.cpp"
-    "media/*.cpp"
-    "render/*.cpp"
-    "audio/*.cpp"
-    "sync/*.cpp"
-)
+# GoogleTest configuration - try system package first, then FetchContent
+if(ENABLE_TESTS)
+    # 先尝试查找系统安装的GoogleTest
+    find_package(GTest QUIET)
 
-# 过滤掉测试文件和构建目录文件
-set(SRC_FILES ""
-        core/Window.cpp
-        core/Window.hpp)
-foreach(file ${ALL_SRC_FILES})
-    # 排除tests目录中的文件
-    if(NOT file MATCHES "/tests/")
-        # 排除构建目录中的文件
-        if(NOT file MATCHES "/cmake-build-debug/" AND NOT file MATCHES "/build/")
-            list(APPEND SRC_FILES ${file})
-        endif()
+    if(NOT GTest_FOUND)
+        message(STATUS "GTest not found, downloading via FetchContent...")
+
+        # 使用FetchContent自动下载
+        include(FetchContent)
+        FetchContent_Declare(
+            googletest
+            GIT_REPOSITORY https://github.com/google/googletest.git
+            GIT_TAG        v1.14.0
+        )
+        FetchContent_MakeAvailable(googletest)
+
+        message(STATUS "GTest will be built from source")
+    else()
+        message(STATUS "Using system GTest: ${GTest_VERSION}")
     endif()
-endforeach()
+endif()
+
+# 添加子目录
+add_subdirectory(common)
+add_subdirectory(core)
+add_subdirectory(audio)
+add_subdirectory(media)
+add_subdirectory(render)
+add_subdirectory(sync)
 
 # 主可执行文件
-add_executable(Prototype-Danzig ${SRC_FILES})
+add_executable(Prototype-Danzig main.cpp)
+
+# 链接库
+target_link_libraries(Prototype-Danzig PRIVATE
+    core
+    Vulkan::Vulkan
+    volk::volk
+    PkgConfig::FFMPEG
+)
 
 # 包含目录
 target_include_directories(Prototype-Danzig PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}  # 根目录
     ${Vulkan_INCLUDE_DIRS}
     ${VCPKG_ROOT}/installed/${VCPKG_TARGET_TRIPLET}/include
-)
-
-# 链接所有库
-target_link_libraries(Prototype-Danzig PRIVATE
-    SDL2::SDL2
-    Vulkan::Vulkan
-    volk::volk
-    spdlog::spdlog
-    # vma::vma  # Vulkan Memory Allocator - header-only library
-    PkgConfig::FFMPEG
 )
 
 # 编译器设置
@@ -111,19 +116,5 @@ install(TARGETS Prototype-Danzig DESTINATION bin)
 # 测试配置
 if(ENABLE_TESTS)
     enable_testing()
-
-    # 收集core模块源文件
-    file(GLOB_RECURSE CORE_SRC_FILES "core/*.cpp")
-    file(GLOB_RECURSE TEST_SRC_FILES "tests/*.cpp")
-
-    add_executable(test_core ${TEST_SRC_FILES} ${CORE_SRC_FILES})
-    target_include_directories(test_core PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}
-        ${VCPKG_ROOT}/installed/${VCPKG_TARGET_TRIPLET}/include
-    )
-    target_link_libraries(test_core PRIVATE
-        spdlog::spdlog
-        PkgConfig::FFMPEG  # 提供FFmpeg头文件路径
-    )
-    add_test(NAME core_tests COMMAND test_core)
+    add_subdirectory(tests)
 endif()
